@@ -1,0 +1,267 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// ENUMS
+// -----------------------------------------------------------------------------
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum AvailabilityStatus {
+  IN_STOCK
+  LOW_STOCK
+  OUT_OF_STOCK
+  UNKNOWN
+}
+
+enum Currency {
+  ZAR
+  // Future multi-country support
+}
+
+enum CrawlerStatus {
+  IDLE
+  RUNNING
+  FAILED
+  MAINTENANCE
+}
+
+// -----------------------------------------------------------------------------
+// CORE & USERS
+// -----------------------------------------------------------------------------
+
+/// Represents an authenticated user in the system (mapped to Supabase Auth).
+model User {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String   @unique
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Allows deploying features silently before making them public.
+model FeatureFlag {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  isEnabled   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime? // Soft delete
+  createdBy   String?   @db.Uuid
+  updatedBy   String?   @db.Uuid
+}
+
+// -----------------------------------------------------------------------------
+// GEOGRAPHY & RETAIL HIERARCHY
+// -----------------------------------------------------------------------------
+
+/// Represents a broad geographical area (e.g., "Gauteng", "Western Cape").
+model Region {
+  id        String        @id @default(cuid())
+  name      String        @unique
+  slug      String        @unique
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  
+  branches  StoreBranch[]
+}
+
+/// Represents a parent retail brand (e.g., "Checkers", "Woolworths").
+model StoreChain {
+  id         String         @id @default(cuid())
+  name       String         @unique
+  slug       String         @unique
+  websiteUrl String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  
+  branches   StoreBranch[]
+  products   StoreProduct[]
+}
+
+/// Represents a physical store location. Prices and stock belong here.
+model StoreBranch {
+  id         String         @id @default(cuid())
+  
+  // A branch must belong to a chain. If a chain is deleted, restrict to protect branch data.
+  chain      StoreChain     @relation(fields: [chainId], references: [id], onDelete: Restrict)
+  chainId    String
+  
+  // A branch must belong to a region.
+  region     Region         @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  regionId   String
+  
+  name       String         
+  branchCode String?        
+  
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  deletedAt  DateTime?      // Soft delete
+  
+  priceHistories PriceHistory[]
+
+  @@unique([chainId, branchCode])
+  @@index([regionId])
+}
+
+// -----------------------------------------------------------------------------
+// PRODUCT CATALOG (DETERMINISTIC MATCHING)
+// -----------------------------------------------------------------------------
+
+/// Hierarchical taxonomy for products (e.g., Food -> Dairy -> Milk).
+model Category {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String     @unique
+  
+  // Self-referencing relationship for hierarchy
+  parentId  String?
+  parent    Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children  Category[] @relation("CategoryHierarchy")
+  
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  products  CanonicalProduct[]
+}
+
+/// The ultimate source of truth for a product, merging data across all retailers.
+model CanonicalProduct {
+  id          String    @id @default(cuid())
+  barcode     String?   @unique 
+  brand       String?
+  name        String    
+  size        String?   
+  unit        String?   
+  
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  categoryId  String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime? // Soft delete
+  createdBy   String?   @db.Uuid
+  updatedBy   String?   @db.Uuid
+  
+  storeProducts StoreProduct[]
+
+  @@index([barcode])
+  @@index([categoryId])
+}
+
+/// The raw product representation as it appears on a specific retailer's system.
+model StoreProduct {
+  id                 String            @id @default(cuid())
+  
+  chain              StoreChain        @relation(fields: [chainId], references: [id], onDelete: Restrict)
+  chainId            String
+  
+  // Can be null if the matching engine hasn't processed it yet
+  canonicalProduct   CanonicalProduct? @relation(fields: [canonicalProductId], references: [id], onDelete: SetNull)
+  canonicalProductId String?
+  
+  retailerProductId  String            
+  name               String            // Raw scraped name
+  url                String
+  
+  // Raw retailer metadata
+  brand              String?
+  size               String?
+  unit               String?
+  packageQuantity    Int?              @default(1)
+  
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  deletedAt          DateTime?         // Soft delete
+
+  images             ProductImage[]
+  priceHistories     PriceHistory[]
+
+  @@unique([chainId, retailerProductId])
+  @@index([canonicalProductId])
+  @@index([retailerProductId])
+}
+
+/// Supports multiple images per retailer product.
+model ProductImage {
+  id             String       @id @default(cuid())
+  product        StoreProduct @relation(fields: [storeProductId], references: [id], onDelete: Cascade)
+  storeProductId String
+  url            String
+  isPrimary      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  
+  @@index([storeProductId])
+}
+
+// -----------------------------------------------------------------------------
+// PRICING ENGINE (APPEND-ONLY)
+// -----------------------------------------------------------------------------
+
+/// Append-only time-series data recording price and stock at a specific point in time.
+model PriceHistory {
+  id               String             @id @default(cuid())
+  
+  // Restrict deletions. Historical prices must never be orphaned.
+  product          StoreProduct       @relation(fields: [storeProductId], references: [id], onDelete: Restrict)
+  storeProductId   String
+  
+  branch           StoreBranch        @relation(fields: [storeBranchId], references: [id], onDelete: Restrict)
+  storeBranchId    String
+  
+  price            Int                // Stored in cents
+  promotionalPrice Int?               // Stored in cents
+  currency         Currency           @default(ZAR)
+  
+  // TODO: Normalize promotions into a separate entity in a future milestone.
+  promotionDetails String?            
+  
+  availability     AvailabilityStatus @default(UNKNOWN)
+  timestamp        DateTime           @default(now()) 
+  // No updatedAt by design
+
+  @@index([storeProductId, storeBranchId, timestamp])
+  @@index([timestamp])
+}
+
+// -----------------------------------------------------------------------------
+// INFRASTRUCTURE & MONITORING
+// -----------------------------------------------------------------------------
+
+/// Feeds the Admin Dashboard with crawler health statistics.
+model CrawlerMetadata {
+  id                   String        @id @default(cuid())
+  name                 String        @unique 
+  version              String
+  status               CrawlerStatus @default(IDLE)
+  lastSuccessfulRun    DateTime?
+  lastFailedRun        DateTime?
+  averageRuntimeMs     Int?
+  lastStructureChange  DateTime?     
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+}
+
+/// Holding area for scraped records that failed the validation pipeline.
+model ScrapedProductQuarantine {
+  id            String   @id @default(cuid())
+  crawlerName   String
+  rawPayload    Json     
+  failureReason String   
+  resolved      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
