@@ -2,8 +2,8 @@
 
 ## Current State
 **Current Milestone:** Milestone 1 (Foundation & Schema)
-**Overall Project Progress:** 12%
-**Milestone 1 Progress:** 50%
+**Overall Project Progress:** 18%
+**Milestone 1 Progress:** 70%
 
 ## Completed Tasks
 - [x] Defined Engineering Constitution and Architecture.
@@ -12,18 +12,20 @@
 - [x] Established `docs/progress.md`.
 - [x] Created `ProductMeasurement` Value Object.
 - [x] Created `CanonicalProduct` Entity.
-- [x] Refactored Domain to use explicit domain exceptions (`EmptyProductNameError`, `BarcodeAlreadyAssignedError`, `InvalidMeasurementError`).
+- [x] Refactored Domain to use explicit domain exceptions.
+- [x] Scaffolded Next.js 15 framework.
+- [x] Initialized Prisma ORM and final `schema.prisma`.
+- [x] Configured Supabase SSR clients and Auth Middleware.
 
 ## Current Task
-- Initializing Next.js 15 framework boilerplate and Prisma ORM schema.
+- Building the base application shell and protected dashboard routing.
 
 ## Next Planned Task
-- Implement Supabase Authentication core and API routes.
+- Implement UI for Login/Signup and verify end-to-end authentication.
 
 ## Recent Architectural Decisions
-- **ADR-003:** Use pure TypeScript classes for Domain Entities and Value Objects to ensure zero framework dependency.
-- **ADR-004:** Barcode validation uses strict GS1 Modulus 10 checksums to prevent bad data ingestion.
-- **ADR-005:** Domain layers must throw specific typed exceptions (e.g., `InvalidMeasurementError`) instead of generic `Error` objects to ensure predictable control flow.
+- **ADR-006:** Bypassed `create-next-app` naming restrictions using a temporary subfolder.
+- **ADR-007 (Pragmatic DDD):** Strict DDD is reserved for competitive advantages (Products, Basket Optimization). Supporting infrastructure (Auth, Config) will use direct, simple implementations (e.g., direct Supabase SSR) to accelerate MVP delivery without unnecessary abstractions.
 
 ## Technical Debt Introduced
 - None currently logged.
