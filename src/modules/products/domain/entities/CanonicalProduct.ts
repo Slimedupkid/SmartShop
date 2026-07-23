@@ -1,5 +1,7 @@
 import { Barcode } from '../value-objects/Barcode';
 import { ProductMeasurement } from '../value-objects/ProductMeasurement';
+import { EmptyProductNameError } from '../errors/EmptyProductNameError';
+import { BarcodeAlreadyAssignedError } from '../errors/BarcodeAlreadyAssignedError';
 
 export interface CanonicalProductProps {
   id: string;
@@ -20,12 +22,13 @@ export class CanonicalProduct {
 
   /**
    * Factory method for creating a new CanonicalProduct or reconstituting an existing one from the DB.
+   * Throws EmptyProductNameError if the name is invalid.
    */
   public static create(
     props: Omit<CanonicalProductProps, 'createdAt' | 'updatedAt'> & { createdAt?: Date; updatedAt?: Date }
   ): CanonicalProduct {
     if (!props.name || props.name.trim() === '') {
-      throw new Error('Canonical Product name cannot be empty.');
+      throw new EmptyProductNameError();
     }
 
     return new CanonicalProduct({
@@ -71,10 +74,11 @@ export class CanonicalProduct {
    * Assigns a barcode to the product. 
    * Business Rule: A barcode acts as the ultimate source of truth. If one is already assigned, 
    * it cannot be overwritten by a different barcode to prevent accidental data corruption.
+   * Throws BarcodeAlreadyAssignedError on violation.
    */
   public assignBarcode(newBarcode: Barcode): void {
     if (this.props.barcode && !this.props.barcode.equals(newBarcode)) {
-      throw new Error('Cannot overwrite an existing verified barcode with a different barcode.');
+      throw new BarcodeAlreadyAssignedError();
     }
     
     this.props.barcode = newBarcode;

@@ -1,3 +1,5 @@
+import { InvalidMeasurementError } from '../errors/InvalidMeasurementError';
+
 export type UnitOfMeasure = 'g' | 'kg' | 'ml' | 'L' | 'unit';
 
 export class ProductMeasurement {
@@ -10,10 +12,11 @@ export class ProductMeasurement {
 
   /**
    * Factory method to construct a validated ProductMeasurement.
+   * Throws InvalidMeasurementError if the size is zero or negative.
    */
   public static create(size: number, unit: UnitOfMeasure): ProductMeasurement {
     if (size <= 0) {
-      throw new Error('Product size must be strictly positive.');
+      throw new InvalidMeasurementError('Product size must be strictly positive.');
     }
     return new ProductMeasurement(size, unit);
   }
