@@ -1,4 +1,5 @@
 import { 
+  CrawlerException, // Added the missing base class import
   CrawlerAuthException, 
   CrawlerNetworkException, 
   CrawlerRateLimitException 
