@@ -1,103 +1,134 @@
 import { 
-  CrawlerException, // Added the missing base class import
+  CrawlerException, 
   CrawlerAuthException, 
   CrawlerNetworkException, 
   CrawlerRateLimitException 
 } from './CrawlerExceptions';
 
-export interface CrawlerHttpConfig {
-  timeoutMs: number;
-  maxRetries: number;
-  baseBackoffMs: number;
+/**
+ * Strategy interface for determining if and how long to wait before retrying.
+ */
+export interface CrawlerRetryStrategy {
+  shouldRetry(response: Response | null, error: Error | null, attempt: number): boolean;
+  calculateBackoff(attempt: number, response: Response | null): number;
 }
 
-const DEFAULT_CONFIG: CrawlerHttpConfig = {
-  timeoutMs: 15000,
-  maxRetries: 3,
-  baseBackoffMs: 1000,
-};
+/**
+ * A sensible default exponential backoff strategy.
+ */
+export class DefaultRetryStrategy implements CrawlerRetryStrategy {
+  constructor(private maxRetries: number = 3, private baseBackoffMs: number = 1000) {}
+
+  shouldRetry(response: Response | null, error: Error | null, attempt: number): boolean {
+    if (attempt >= this.maxRetries) return false;
+    
+    // Retry on network crashes (fetch throws)
+    if (error && (error.name === 'TimeoutError' || error.name === 'AbortError' || error.name === 'TypeError')) {
+      return true;
+    }
+
+    if (response) {
+      // Retry on Rate Limits or Server Errors
+      if (response.status === 429 || response.status >= 500) return true;
+    }
+
+    return false;
+  }
+
+  calculateBackoff(attempt: number, response: Response | null): number {
+    // Respect Retry-After header if provided by a WAF
+    if (response?.headers.has('retry-after')) {
+      const retryAfter = parseInt(response.headers.get('retry-after') || '0', 10);
+      if (!isNaN(retryAfter) && retryAfter > 0) return retryAfter * 1000;
+    }
+    return this.baseBackoffMs * Math.pow(2, attempt - 1);
+  }
+}
+
+export interface CrawlerHttpConfig {
+  timeoutMs: number;
+  retryStrategy: CrawlerRetryStrategy;
+}
 
 export class CrawlerHttpClient {
   private config: CrawlerHttpConfig;
 
   constructor(config?: Partial<CrawlerHttpConfig>) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config = {
+      timeoutMs: 15000,
+      retryStrategy: new DefaultRetryStrategy(),
+      ...config
+    };
   }
 
   /**
-   * Executes a generic HTTP request with automatic resilience.
+   * Executes a resilient HTTP request, returning the native Response.
+   * Caller is responsible for parsing (e.g., res.json() or res.text()).
    */
-  async request<T>(url: string, options: RequestInit): Promise<T> {
-    for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
-      // Modern Node/Web API: AbortSignal.timeout is cleaner than setTimeout
-      const signal = AbortSignal.timeout(this.config.timeoutMs);
+  async request(url: string, options: RequestInit = {}): Promise<Response> {
+    let attempt = 1;
+
+    while (true) {
+      // Combine external caller aborts with our internal timeout
+      const timeoutSignal = AbortSignal.timeout(this.config.timeoutMs);
+      const signal = options.signal 
+        ? AbortSignal.any([options.signal, timeoutSignal]) 
+        : timeoutSignal;
       
+      let response: Response | null = null;
+      let caughtError: Error | null = null;
+
       try {
-        const response = await fetch(url, {
-          ...options,
-          signal,
-          // Next.js specific: bypass Next.js data cache for real-time crawler data
-          cache: 'no-store', 
-        });
+        response = await fetch(url, { ...options, signal });
 
         if (response.ok) {
-          return await response.json() as T;
+          return response;
         }
 
-        this.handleErrorStatus(response.status, attempt);
+        this.validateStatus(response);
 
       } catch (error: any) {
-        if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-          if (attempt === this.config.maxRetries) {
-            throw new CrawlerNetworkException(`Request timed out after ${this.config.timeoutMs}ms`);
-          }
-          await this.delay(this.calculateBackoff(attempt));
-          continue;
-        }
-
-        // If it's already our typed exception, bubble it up immediately
-        if (error instanceof CrawlerException) {
+        caughtError = error;
+        
+        // Bubble up our typed exceptions immediately without retrying if they are fatal (like Auth)
+        if (error instanceof CrawlerAuthException) {
           throw error;
         }
-
-        // Unhandled fetch crashes (e.g. DNS failure)
-        if (attempt === this.config.maxRetries) {
-          throw new CrawlerNetworkException(error.message || 'Unknown network failure');
-        }
       }
-      
-      await this.delay(this.calculateBackoff(attempt));
-    }
 
-    throw new CrawlerNetworkException('Max retries exhausted');
+      if (this.config.retryStrategy.shouldRetry(response, caughtError, attempt)) {
+        const backoffMs = this.config.retryStrategy.calculateBackoff(attempt, response);
+        await this.delay(backoffMs);
+        attempt++;
+        continue;
+      }
+
+      // If we exhaust retries or shouldn't retry, throw the final error
+      if (caughtError) {
+        if (caughtError instanceof CrawlerException) throw caughtError;
+        throw new CrawlerNetworkException(caughtError.message || 'Unknown network failure');
+      }
+
+      if (response) {
+        throw new CrawlerNetworkException(`Unhandled HTTP status ${response.status}`, response.status);
+      }
+    }
   }
 
-  private handleErrorStatus(status: number, attempt: number): void {
-    if (status === 401 || status === 403) {
-      // Never retry auth errors
-      throw new CrawlerAuthException(`Access denied (Status: ${status}). Cookie may be expired.`, status);
+  /**
+   * Translates fatal HTTP statuses into typed domain exceptions.
+   */
+  private validateStatus(response: Response): void {
+    if (response.status === 401 || response.status === 403) {
+      throw new CrawlerAuthException(`Access denied (Status: ${response.status}). WAF blocked or cookie expired.`, response.status);
     }
-
-    if (status === 429) {
-      if (attempt === this.config.maxRetries) {
-        throw new CrawlerRateLimitException('Rate limit exhausted after retries', status);
-      }
-      return; // Handled by outer retry loop
+    if (response.status === 429) {
+      throw new CrawlerRateLimitException('Rate limit exhausted', response.status);
     }
-
-    if (status >= 500) {
-      if (attempt === this.config.maxRetries) {
-        throw new CrawlerNetworkException(`Server error (Status: ${status})`, status);
-      }
-      return; // Handled by outer retry loop
+    if (response.status >= 500) {
+      throw new CrawlerNetworkException(`Server error (Status: ${response.status})`, response.status);
     }
-
-    // Unhandled 4xx (e.g. 404, 400) should fail immediately, as retrying a bad request is pointless
-    throw new CrawlerNetworkException(`Client request invalid (Status: ${status})`, status);
-  }
-
-  private calculateBackoff(attempt: number): number {
-    return this.config.baseBackoffMs * Math.pow(2, attempt - 1);
+    throw new CrawlerNetworkException(`Client request invalid (Status: ${response.status})`, response.status);
   }
 
   private delay(ms: number): Promise<void> {

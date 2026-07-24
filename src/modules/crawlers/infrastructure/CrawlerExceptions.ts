@@ -2,6 +2,8 @@ export class CrawlerException extends Error {
   constructor(public readonly code: string, message: string, public readonly statusCode?: number) {
     super(message);
     this.name = 'CrawlerException';
+    // Restore prototype chain for proper instanceof evaluation in all TS targets
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
