@@ -1,89 +1,105 @@
-/**
- * Generic HTTP client for crawler infrastructure.
- * Handles timeouts, retries, and normalizes fetch responses.
- * Strictly decoupled from any specific retailer logic.
- */
+import { 
+  CrawlerAuthException, 
+  CrawlerNetworkException, 
+  CrawlerRateLimitException 
+} from './CrawlerExceptions';
 
-export interface HttpClientOptions {
-  headers?: Record<string, string>;
-  timeoutMs?: number;
-  retries?: number;
+export interface CrawlerHttpConfig {
+  timeoutMs: number;
+  maxRetries: number;
+  baseBackoffMs: number;
 }
 
+const DEFAULT_CONFIG: CrawlerHttpConfig = {
+  timeoutMs: 15000,
+  maxRetries: 3,
+  baseBackoffMs: 1000,
+};
+
 export class CrawlerHttpClient {
+  private config: CrawlerHttpConfig;
+
+  constructor(config?: Partial<CrawlerHttpConfig>) {
+    this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
   /**
-   * Executes a POST request with automatic retries and timeout handling.
+   * Executes a generic HTTP request with automatic resilience.
    */
-  static async post<T>(url: string, body: any, options?: HttpClientOptions): Promise<T> {
-    const retries = options?.retries ?? 3;
-    const timeoutMs = options?.timeoutMs ?? 15000; // 15 second default timeout
-
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
+  async request<T>(url: string, options: RequestInit): Promise<T> {
+    for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
+      // Modern Node/Web API: AbortSignal.timeout is cleaner than setTimeout
+      const signal = AbortSignal.timeout(this.config.timeoutMs);
+      
       try {
         const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...options?.headers,
-          },
-          body: JSON.stringify(body),
-          signal: controller.signal,
+          ...options,
+          signal,
+          // Next.js specific: bypass Next.js data cache for real-time crawler data
+          cache: 'no-store', 
         });
-
-        clearTimeout(timeoutId);
 
         if (response.ok) {
           return await response.json() as T;
         }
 
-        // Handle specific failure modes
-        if (response.status === 401 || response.status === 403) {
-          throw new Error(`AUTH_ERROR: Access denied. Cookie/Token may be expired. Status: ${response.status}`);
-        }
+        this.handleErrorStatus(response.status, attempt);
 
-        if (response.status === 429) {
-          if (attempt === retries) throw new Error(`RATE_LIMITED: Max retries reached.`);
-          // Exponential backoff: 2s, 4s, 8s...
-          const backoff = Math.pow(2, attempt) * 1000;
-          await this.delay(backoff);
-          continue; 
-        }
-
-        if (response.status >= 500) {
-          if (attempt === retries) throw new Error(`NETWORK_ERROR: Server error. Status: ${response.status}`);
-          await this.delay(2000); // Wait 2s for server hiccups
+      } catch (error: any) {
+        if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+          if (attempt === this.config.maxRetries) {
+            throw new CrawlerNetworkException(`Request timed out after ${this.config.timeoutMs}ms`);
+          }
+          await this.delay(this.calculateBackoff(attempt));
           continue;
         }
 
-        // Unhandled 4xx errors
-        throw new Error(`NETWORK_ERROR: Unexpected status ${response.status}`);
-
-      } catch (error: any) {
-        clearTimeout(timeoutId);
-
-        // AbortController throws an 'AbortError' name when timeout hits
-        if (error.name === 'AbortError') {
-          if (attempt === retries) throw new Error(`NETWORK_ERROR: Request timed out after ${timeoutMs}ms`);
-          continue; // Retry on timeout
-        }
-
-        // If it's our custom auth error, throw immediately, don't retry
-        if (error.message.includes('AUTH_ERROR')) {
+        // If it's already our typed exception, bubble it up immediately
+        if (error instanceof CrawlerException) {
           throw error;
         }
 
-        if (attempt === retries) throw error;
+        // Unhandled fetch crashes (e.g. DNS failure)
+        if (attempt === this.config.maxRetries) {
+          throw new CrawlerNetworkException(error.message || 'Unknown network failure');
+        }
       }
+      
+      await this.delay(this.calculateBackoff(attempt));
     }
 
-    throw new Error('NETWORK_ERROR: Unknown request failure');
+    throw new CrawlerNetworkException('Max retries exhausted');
   }
 
-  private static delay(ms: number) {
+  private handleErrorStatus(status: number, attempt: number): void {
+    if (status === 401 || status === 403) {
+      // Never retry auth errors
+      throw new CrawlerAuthException(`Access denied (Status: ${status}). Cookie may be expired.`, status);
+    }
+
+    if (status === 429) {
+      if (attempt === this.config.maxRetries) {
+        throw new CrawlerRateLimitException('Rate limit exhausted after retries', status);
+      }
+      return; // Handled by outer retry loop
+    }
+
+    if (status >= 500) {
+      if (attempt === this.config.maxRetries) {
+        throw new CrawlerNetworkException(`Server error (Status: ${status})`, status);
+      }
+      return; // Handled by outer retry loop
+    }
+
+    // Unhandled 4xx (e.g. 404, 400) should fail immediately, as retrying a bad request is pointless
+    throw new CrawlerNetworkException(`Client request invalid (Status: ${status})`, status);
+  }
+
+  private calculateBackoff(attempt: number): number {
+    return this.config.baseBackoffMs * Math.pow(2, attempt - 1);
+  }
+
+  private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
