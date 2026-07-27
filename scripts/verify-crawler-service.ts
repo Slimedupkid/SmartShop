@@ -3,7 +3,6 @@ import { CrawlerService } from '../src/modules/crawlers/services/CrawlerService'
 import { IRetailerCrawler, CrawlContext } from '../src/modules/crawlers/contracts/IRetailerCrawler';
 import { CrawlerResult } from '../src/modules/crawlers/contracts/CrawlerResult';
 
-// Stub crawlers for orchestration testing
 class MockSuccessCrawler implements IRetailerCrawler {
   retailer = 'CHECKERS' as const;
   async crawl(context: CrawlContext): Promise<CrawlerResult> {
@@ -17,7 +16,7 @@ class MockSuccessCrawler implements IRetailerCrawler {
 }
 
 class MockFailingCrawler implements IRetailerCrawler {
-  retailer = 'CHECKERS' as const; // Reusing string for mock simplicity
+  retailer = 'CHECKERS' as const; 
   async crawl(context: CrawlContext): Promise<CrawlerResult> {
     return {
       success: false,
@@ -34,12 +33,10 @@ async function runServiceVerification() {
   const successCrawler = new MockSuccessCrawler();
   const failCrawler = new MockFailingCrawler();
   
-  // Inject both crawlers into the service
   const service = new CrawlerService([successCrawler, failCrawler]);
 
-  const result = await service.searchAll({ storeBranchCode: 'TEST' });
+  const result = await service.searchAll({ storeBranchCode: 'TEST', searchTerm: 'milk' });
 
-  // Assertions
   assert.equal(result.success, false, 'Overall success should be false if one crawler fails');
   assert.equal(result.data.length, 1, 'Service should still aggregate data from successful crawlers');
   assert.equal(result.errors.length, 1, 'Service should aggregate errors from failed crawlers');

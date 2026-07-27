@@ -8,21 +8,20 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const storeBranchCode = searchParams.get('storeBranchCode') || env.CHECKERS_STORE_ID;
+    const searchTerm = searchParams.get('searchTerm') || 'milk';
 
-    // Instantiate infrastructure and adapters
     const httpClient = new CrawlerHttpClient();
     const checkersCrawler = new CheckersCrawler(httpClient);
 
-    // Instantiate application service with injected crawlers
     const crawlerService = new CrawlerService([checkersCrawler]);
 
-    // Execute multi-crawler search
     const result = await crawlerService.searchAll({
       storeBranchCode: storeBranchCode,
+      searchTerm: searchTerm,
     });
 
     return NextResponse.json(result, {
-      status: result.success ? 200 : 207, // 207 Multi-Status if partial errors exist
+      status: result.success ? 200 : 207,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'An unexpected server error occurred';
