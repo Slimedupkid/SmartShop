@@ -5,7 +5,7 @@ export class CheckersParser {
   private readonly retailer: SupportedRetailer = 'CHECKERS';
 
   /**
-   * Transforms raw JSON from the Checkers API into our domain-neutral contract.
+   * Parses raw Checkers JSON data into our domain-neutral RawScrapedProduct model.
    */
   parse(rawData: unknown, storeBranchCode: string): RawScrapedProduct[] {
     if (!rawData || typeof rawData !== 'object') {
@@ -25,20 +25,17 @@ export class CheckersParser {
 
       const product = item as Record<string, unknown>;
 
-      // Price: Use discountedPrice if available, otherwise fallback to price
       const discountedPrice = typeof product.discountedPrice === 'number' ? product.discountedPrice : 0;
       const regularPrice = typeof product.price === 'number' ? product.price : 0;
       const finalPrice = discountedPrice > 0 ? discountedPrice : regularPrice;
       const priceInCents = Math.round(finalPrice * 100);
 
-      // Identifiers
       const id = typeof product.id === 'string' ? product.id : 
                  (typeof product.articleNumber === 'string' ? product.articleNumber : 'UNKNOWN');
                  
-      const barcodes = Array.isArray(product.barcodes) && typeof product.barcodes[0] === 'string' 
+      const barcode = Array.isArray(product.barcodes) && typeof product.barcodes[0] === 'string' 
                        ? product.barcodes[0] : undefined;
                        
-      // Metadata
       const displayName = typeof product.displayName === 'string' ? product.displayName : 'Unknown Product';
       const active = typeof product.active === 'boolean' ? product.active : false;
       const brand = typeof product.brand === 'string' ? product.brand : undefined;
@@ -47,7 +44,7 @@ export class CheckersParser {
         retailer: this.retailer,
         retailerProductId: id,
         storeBranchCode: storeBranchCode,
-        barcode: barcodes,
+        barcode: barcode,
         name: displayName,
         brand: brand,
         productUrl: id !== 'UNKNOWN' ? `https://www.checkers.co.za/p/${id}` : '',
