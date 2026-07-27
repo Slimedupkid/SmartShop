@@ -19,7 +19,8 @@ export class CheckersCrawler implements IRetailerCrawler {
     const startTime = Date.now();
     
     try {
-      const payload = this.buildObservedPayload();
+      // Pass the search term from context to the HAR-verified payload builder
+      const payload = this.buildObservedPayload(context.searchTerm);
 
       const response = await this.httpClient.request(this.baseUrl, {
         method: 'POST',
@@ -27,9 +28,9 @@ export class CheckersCrawler implements IRetailerCrawler {
           'Content-Type': 'application/json',
           'Accept': 'application/json, text/plain, */*',
           'Cookie': env.CHECKERS_COOKIE,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36',
           'Origin': 'https://www.checkers.co.za',
-          'Referer': 'https://www.checkers.co.za/',
+          'Referer': `https://www.checkers.co.za/search?Search=${encodeURIComponent(context.searchTerm)}`,
           'Accept-Language': 'en-US,en;q=0.9',
         },
         body: JSON.stringify(payload)
@@ -37,7 +38,6 @@ export class CheckersCrawler implements IRetailerCrawler {
 
       const rawData: unknown = await response.json();
       
-      // Delegate transformation to the verified parser
       const products = this.parser.parse(rawData, context.storeBranchCode);
 
       return {
@@ -55,7 +55,6 @@ export class CheckersCrawler implements IRetailerCrawler {
       const isParserException = error instanceof CrawlerParserException;
       const message = error instanceof Error ? error.message : 'Unknown error occurred during Checkers crawl';
       
-      // Safely narrow the exception code to the strict union expected by CrawlerResult
       type ValidErrorCode = "PARSER_ERROR" | "NETWORK_ERROR" | "AUTH_ERROR" | "RATE_LIMITED";
       
       return {
@@ -74,19 +73,36 @@ export class CheckersCrawler implements IRetailerCrawler {
     }
   }
 
-  private buildObservedPayload() {
+  // Exact payload extracted directly from HAR file evidence
+  private buildObservedPayload(searchTerm: string) {
     return {
       storeContexts: [],
       filterData: {
         filter: {
           showAllDisplayVariants: false,
-          showNotRangedProducts: false
+          showNotRangedProducts: false,
+          productListSource: {
+            search: searchTerm
+          },
+          paginationOptions: {
+            page: 0,
+            pageSize: 16
+          },
+          filterOptions: {
+            filterIds: [],
+            dealsOnly: false,
+            brandOptions: [],
+            departmentOptions: [],
+            serviceOptions: [],
+            facetOptions: []
+          },
+          sortOptions: null
         },
-        forYouBonusBuyIds: [],
-        isCarousel: true,
-        storeContexts: [],
-        url: "/api/v3/products/product-list-page"
-      }
+        displayOptions: {
+          includeDisplayCategoryTree: true
+        }
+      },
+      forYouBonusBuyIds: []
     };
   }
 }

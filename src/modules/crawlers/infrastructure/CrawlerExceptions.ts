@@ -27,3 +27,11 @@ export class CrawlerNetworkException extends CrawlerException {
     this.name = 'CrawlerNetworkException';
   }
 }
+
+export class CrawlerParserException extends CrawlerException {
+  constructor(message: string, statusCode?: number) {
+    super('PARSER_ERROR', message, statusCode);
+    this.name = 'CrawlerParserException';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}

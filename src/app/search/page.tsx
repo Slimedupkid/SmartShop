@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-export default function SearchTestPage() {
+export default function Home() {
   const [searchTerm, setSearchTerm] = useState('milk');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
@@ -25,66 +25,71 @@ export default function SearchTestPage() {
       
       setResult(data);
     } catch (err) {
-      setError('A critical network error occurred while reaching the SmartShop API.');
+      setError('A network error occurred while reaching the API.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <main style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif', maxWidth: '800px', margin: '0 auto' }}>
-      <h1>Live Extraction Test</h1>
+    <main style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif', maxWidth: '600px', margin: '0 auto' }}>
+      <h1>SmartShop MVP</h1>
       
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem', marginTop: '1rem' }}>
+      {/* 1. Search Box & Button */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', marginTop: '1rem' }}>
         <input 
           type="text" 
           value={searchTerm} 
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Enter a grocery item..."
+          placeholder="Search products..."
           style={{ padding: '0.5rem', flexGrow: 1, border: '1px solid #ccc', borderRadius: '4px' }}
           onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
         />
         <button 
           onClick={handleSearch} 
           disabled={loading} 
-          style={{ padding: '0.5rem 1.5rem', cursor: loading ? 'not-allowed' : 'pointer' }}
+          style={{ padding: '0.5rem 1.5rem' }}
         >
-          {loading ? 'Extracting...' : 'Search'}
+          {loading ? 'Searching...' : 'Search'}
         </button>
       </div>
 
+      {/* 2. Error State */}
       {error && (
-        <div style={{ padding: '1rem', backgroundColor: '#ffebee', color: '#cc0000', border: '1px solid #ffcdd2', marginBottom: '1rem' }}>
-          <strong>Extraction Failed:</strong> {error}
+        <div style={{ padding: '1rem', backgroundColor: '#ffebee', color: '#cc0000', marginBottom: '1rem' }}>
+          <strong>Error:</strong> {error}
         </div>
       )}
 
+      {/* 3. Loading State */}
       {loading && (
         <div style={{ padding: '2rem', textAlign: 'center', color: '#666' }}>
-          Hitting live Checkers API...
+          Extracting live data...
         </div>
       )}
 
+      {/* 4. Empty State */}
       {result && result.data?.length === 0 && !error && !loading && (
         <div style={{ padding: '2rem', textAlign: 'center', color: '#666' }}>
-          No products found for "{searchTerm}".
+          No products found.
         </div>
       )}
 
+      {/* 5. Results List */}
       {result && result.data?.length > 0 && !loading && (
         <div>
-          <p style={{ marginBottom: '1rem', color: '#2e7d32', fontWeight: 'bold' }}>
+          <p style={{ marginBottom: '1rem', color: 'green', fontWeight: 'bold' }}>
             Extracted {result.metadata.itemsFound} items in {result.metadata.durationMs}ms
           </p>
           
-          <div style={{ display: 'grid', gap: '1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {result.data.map((product: any, index: number) => (
-              <div key={index} style={{ padding: '1rem', border: '1px solid #e0e0e0', borderRadius: '4px', display: 'flex', justifyContent: 'space-between' }}>
+              <div key={index} style={{ padding: '1rem', border: '1px solid #eee', borderRadius: '4px', display: 'flex', justifyContent: 'space-between' }}>
                 <div>
-                  <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem' }}>{product.name}</h3>
-                  <div style={{ color: '#666', fontSize: '0.85rem' }}>Retailer: {product.retailer}</div>
+                  <div style={{ fontWeight: 'bold' }}>{product.name}</div>
+                  <div style={{ color: '#666', fontSize: '0.85rem' }}>{product.retailer}</div>
                 </div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
+                <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
                   R {(product.priceInCents / 100).toFixed(2)}
                 </div>
               </div>
