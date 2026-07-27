@@ -36,6 +36,8 @@ export class CheckersCrawler implements IRetailerCrawler {
       });
 
       const rawData: unknown = await response.json();
+      
+      // Delegate transformation to the verified parser
       const products = this.parser.parse(rawData, context.storeBranchCode);
 
       return {
@@ -51,13 +53,13 @@ export class CheckersCrawler implements IRetailerCrawler {
     } catch (error: unknown) {
       const isCrawlerException = error instanceof CrawlerException;
       const isParserException = error instanceof CrawlerParserException;
-      const message = error instanceof Error ? error.message : 'Unknown error occurred during crawl';
+      const message = error instanceof Error ? error.message : 'Unknown error occurred during Checkers crawl';
       
       return {
         success: false,
         data: [],
         errors: [{
-          code: isParserException ? 'PARSER_ERROR' : (isCrawlerException ? (error as CrawlerException).code as any : 'NETWORK_ERROR'),
+          code: isParserException ? 'PARSER_ERROR' : (isCrawlerException ? (error as CrawlerException).code : 'NETWORK_ERROR'),
           message: message,
           retailer: this.retailer
         }],

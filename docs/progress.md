@@ -5,7 +5,7 @@
 ### Status Overview
 * **Phase 1: Contracts & Interfaces** — `[x]` Completed
 * **Phase 2: HTTP Transport Infrastructure** — `[x]` Completed & Frozen
-* **Phase 3: Retailer Adapter (Checkers)** — `[-]` In Progress (Live network requests paused)
+* **Phase 3: Retailer Adapter (Checkers)** — `[-]` In Progress (Live network fetching paused)
 * **Phase 4: Checkers Response Parser** — `[x]` Completed & Verified
 
 ---
@@ -20,7 +20,6 @@
 #### Phase 2: Infrastructure Layer
 * `[x]` Implemented `CrawlerHttpClient` with strategy-based retries and modern `AbortSignal.timeout()`.
 * `[x]` Created typed infrastructure exceptions (`CrawlerAuthException`, `CrawlerRateLimitException`, `CrawlerNetworkException`, `CrawlerParserException`).
-* `[x]` Verified prototype inheritance for `instanceof` runtime safety.
 
 #### Phase 3: Checkers Adapter
 * `[x]` Implemented `CheckersCrawler` using Dependency Injection.
@@ -31,3 +30,4 @@
 * `[x]` Implemented isolated `CheckersParser.ts` handling safe `unknown` type narrowing and Rand-to-cent conversions.
 * `[x]` Created native verification script (`scripts/verify-checkers-parser.ts`).
 * `[x]` **Verified:** All assertions passed for happy-path transformations and malformed exception handling.
+* `[x]` **Current Task:** Wired the verified `CheckersParser` into the `CheckersCrawler` adapter, removing inline parsing logic and replacing generic `any` casts with strict types.
