@@ -1,35 +1,33 @@
-# SmartShop Project Progress
+# SmartShop Development Progress
 
-## Current Milestone: Milestone 1 (Foundation & Schema)
+## Module: Crawlers & Scraping Engine
 
-### Completed Milestones
-*None yet.*
+### Status Overview
+* **Phase 1: Contracts & Interfaces** — `[x]` Completed
+* **Phase 2: HTTP Transport Infrastructure** — `[x]` Completed & Frozen
+* **Phase 3: Retailer Adapter (Checkers)** — `[-]` In Progress (Live network requests paused)
+* **Phase 4: Checkers Response Parser** — `[x]` Completed & Verified
 
-### Completed Tasks
-- [x] Defined Engineering Constitution and Architecture.
-- [x] Initialized Git repository.
-- [x] Created `Barcode`, `ProductMeasurement`, `CanonicalProduct`, and custom exceptions.
-- [x] Scaffolded Next.js 15 framework and Prisma ORM.
-- [x] Configured Supabase SSR clients and Auth Middleware.
-- [x] Conducted Pre-UI codebase review.
-- [x] Implemented Zod environment variable validation (`src/core/config/env.ts`).
-- [x] Refactored Middleware for scalable route protection arrays.
-- [x] Initialized `shadcn/ui` and core components.
-- [x] Built Login, Signup, and Protected Dashboard shell using Server Actions.
+---
 
-### Current Task
-- End-to-End Verification of the Authentication flow.
+### Detailed Phase Tracker
 
-### Next Task
-- Final Principal Engineer Review of Milestone 1.
+#### Phase 1: Core Contracts
+* `[x]` Defined `IRetailerCrawler` interface.
+* `[x]` Defined `CrawlerResult` and unified error contract.
+* `[x]` Defined `RawScrapedProduct` schema.
 
-### Blockers
-- None.
+#### Phase 2: Infrastructure Layer
+* `[x]` Implemented `CrawlerHttpClient` with strategy-based retries and modern `AbortSignal.timeout()`.
+* `[x]` Created typed infrastructure exceptions (`CrawlerAuthException`, `CrawlerRateLimitException`, `CrawlerNetworkException`, `CrawlerParserException`).
+* `[x]` Verified prototype inheritance for `instanceof` runtime safety.
 
-### Upcoming Work (Milestone 2)
-- Product search API.
-- Checkers crawler isolated infrastructure.
-- Product matching engine.
+#### Phase 3: Checkers Adapter
+* `[x]` Implemented `CheckersCrawler` using Dependency Injection.
+* `[-]` Live API network fetching paused until an automated session strategy is introduced.
 
-## Recent Architectural Decisions
-- **ADR-010 (Form Handling):** MVP authentication forms use native Next.js Server Actions without client-side JavaScript or `react-hook-form` to maximize performance and simplicity. Server-side validation uses `zod`.
+#### Phase 4: Parser & Synthetic Fixtures
+* `[x]` Created synthetic test fixture (`src/modules/crawlers/__tests__/__fixtures__/checkersSyntheticFixture.ts`).
+* `[x]` Implemented isolated `CheckersParser.ts` handling safe `unknown` type narrowing and Rand-to-cent conversions.
+* `[x]` Created native verification script (`scripts/verify-checkers-parser.ts`).
+* `[x]` **Verified:** All assertions passed for happy-path transformations and malformed exception handling.
