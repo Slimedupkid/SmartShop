@@ -9,10 +9,9 @@ async function runTest() {
   const crawler = new CheckersCrawler(httpClient);
 
   try {
-    // Fire the crawl execution
     const result = await crawler.crawl({
       storeBranchCode: env.CHECKERS_STORE_ID,
-      searchTerm: 'milk' // <-- FIX: Added the missing searchTerm property
+      searchTerm: 'milk' // Added required searchTerm property
     });
 
     console.log('Result:', JSON.stringify(result, null, 2));
