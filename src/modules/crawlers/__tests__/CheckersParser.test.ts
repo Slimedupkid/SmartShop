@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach } from 'vitest';
 import { CheckersParser } from '../adapters/CheckersParser';
 import { checkersMockResponse, malformedMockResponse } from './__fixtures__/checkersMock';
 import { CrawlerParserException } from '../infrastructure/CrawlerExceptions';
