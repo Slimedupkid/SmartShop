@@ -55,11 +55,14 @@ export class CheckersCrawler implements IRetailerCrawler {
       const isParserException = error instanceof CrawlerParserException;
       const message = error instanceof Error ? error.message : 'Unknown error occurred during Checkers crawl';
       
+      // Safely narrow the exception code to the strict union expected by CrawlerResult
+      type ValidErrorCode = "PARSER_ERROR" | "NETWORK_ERROR" | "AUTH_ERROR" | "RATE_LIMITED";
+      
       return {
         success: false,
         data: [],
         errors: [{
-          code: isParserException ? 'PARSER_ERROR' : (isCrawlerException ? (error as CrawlerException).code : 'NETWORK_ERROR'),
+          code: isParserException ? 'PARSER_ERROR' : (isCrawlerException ? (error as CrawlerException).code as ValidErrorCode : 'NETWORK_ERROR'),
           message: message,
           retailer: this.retailer
         }],
